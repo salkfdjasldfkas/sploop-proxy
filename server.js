@@ -1,10 +1,11 @@
 const WebSocket = require('ws');
 const http = require('http');
 const url = require('url');
+const crypto = require('crypto');
 
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Sploop Proxy Active\n\nUsage: wss://sploop-proxy.onrender.com/?target=sfra.sploop.io');
+  res.writeHead(200);
+  res.end('Sploop Proxy OK');
 });
 
 const wss = new WebSocket.Server({ server });
@@ -12,9 +13,14 @@ const wss = new WebSocket.Server({ server });
 wss.on('connection', (clientSocket, req) => {
   const parsedUrl = url.parse(req.url, true);
   const target = parsedUrl.query.target || 'sfra.sploop.io';
-  const targetUrl = 'wss://' + target + '/ws';
   
-  console.log('[PROXY] New connection, target:', targetUrl);
+  // "bot1" ekle - orijinal bağlantı gibi
+  const targetUrl = 'wss://' + target + '/wsbot1';
+  
+  console.log('[PROXY] Connecting to:', targetUrl);
+  
+  // Rastgele Sec-WebSocket-Key oluştur
+  const wsKey = crypto.randomBytes(16).toString('base64');
   
   let gameSocket = null;
   const messageQueue = [];
@@ -23,29 +29,36 @@ wss.on('connection', (clientSocket, req) => {
   try {
     gameSocket = new WebSocket(targetUrl, {
       headers: {
+        'Host': target,
         'Origin': 'https://sploop.io',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Extensions': 'permessage-deflate',
+        'Sec-WebSocket-Key': wsKey,
+        'Connection': 'keep-alive, Upgrade',
+        'Upgrade': 'websocket',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
       },
-      handshakeTimeout: 10000
+      handshakeTimeout: 15000,
+      perMessageDeflate: false
     });
   } catch (err) {
-    console.log('[PROXY] Failed to create game socket:', err.message);
+    console.log('[PROXY] Connection error:', err.message);
     clientSocket.close();
     return;
   }
   
   gameSocket.on('open', () => {
-    console.log('[PROXY] Connected to game server');
+    console.log('[PROXY] Game connected!');
     isGameConnected = true;
     
-    // Kuyruktaki mesajları gönder
     while (messageQueue.length > 0) {
-      const msg = messageQueue.shift();
       try {
-        gameSocket.send(msg);
+        gameSocket.send(messageQueue.shift());
       } catch (e) {}
     }
   });
@@ -54,23 +67,19 @@ wss.on('connection', (clientSocket, req) => {
     if (clientSocket.readyState === WebSocket.OPEN) {
       try {
         clientSocket.send(data);
-      } catch (e) {
-        console.log('[PROXY] Error sending to client:', e.message);
-      }
+      } catch (e) {}
     }
   });
   
-  gameSocket.on('close', (code, reason) => {
-    console.log('[PROXY] Game connection closed. Code:', code);
-    isGameConnected = false;
+  gameSocket.on('close', (code) => {
+    console.log('[PROXY] Game closed, code:', code);
     if (clientSocket.readyState === WebSocket.OPEN) {
       clientSocket.close();
     }
   });
   
   gameSocket.on('error', (err) => {
-    console.log('[PROXY] Game socket error:', err.message);
-    isGameConnected = false;
+    console.log('[PROXY] Game error:', err.message);
     if (clientSocket.readyState === WebSocket.OPEN) {
       clientSocket.close();
     }
@@ -80,30 +89,22 @@ wss.on('connection', (clientSocket, req) => {
     if (isGameConnected && gameSocket.readyState === WebSocket.OPEN) {
       try {
         gameSocket.send(data);
-      } catch (e) {
-        console.log('[PROXY] Error sending to game:', e.message);
-      }
+      } catch (e) {}
     } else {
       messageQueue.push(data);
     }
   });
   
   clientSocket.on('close', () => {
-    console.log('[PROXY] Client disconnected');
-    if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
-      gameSocket.close();
-    }
+    console.log('[PROXY] Client closed');
+    if (gameSocket) gameSocket.close();
   });
   
-  clientSocket.on('error', (err) => {
-    console.log('[PROXY] Client socket error:', err.message);
-    if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
-      gameSocket.close();
-    }
+  clientSocket.on('error', () => {
+    if (gameSocket) gameSocket.close();
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('[PROXY] Server running on port', PORT);
+server.listen(process.env.PORT || 3000, () => {
+  console.log('[PROXY] Running');
 });
