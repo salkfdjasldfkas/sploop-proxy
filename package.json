@@ -6,9 +6,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.14.2"
-  },
-  "engines": {
-    "node": "18.x"
+    "ws": "^8.0.0"
   }
 }
