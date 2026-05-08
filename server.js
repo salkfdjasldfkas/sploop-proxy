@@ -2,7 +2,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const net = require('net');
 
-const TARGET_HOST = 'game.sploop.io';
+const TARGET_HOST = 'sfra.sploop.io';
 const TARGET_PORT = 443;
 
 const server = http.createServer();
